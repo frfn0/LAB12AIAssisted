@@ -11,6 +11,7 @@ from app.api.items import router as items_router
 from app.config import get_settings
 from app.database import init_db
 from app.errors import register_exception_handlers
+from app.middleware import SecurityHeadersMiddleware
 from app.models import today
 from app.schemas import HealthResponse
 
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(application)
+    application.add_middleware(SecurityHeadersMiddleware)
     application.include_router(items_router, prefix="/items", tags=["Книги"])
 
     @application.get("/health", response_model=HealthResponse, tags=["Служебные"])
