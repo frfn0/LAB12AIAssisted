@@ -1,0 +1,131 @@
+Задание 4. Генерация Docker-конфигурации: фактический вывод
+==========================================================
+
+Дата проверки: 2026-10-06
+Docker: 29.5.2, Docker Compose: v5.1.4
+Образ: lab12-app:latest, размер 321 MB
+
+Файлы
+-----
+Dockerfile            образ приложения на python:3.12-slim
+docker-compose.yml    два сервиса: app и db (PostgreSQL 16)
+.dockerignore         тесты, результаты и локальные файлы не попадают в образ
+alembic.ini           настройки Alembic
+alembic/env.py        строка подключения берётся из настроек приложения
+alembic/versions/0001_initial_schema.py   начальная схема
+
+Сборка образа
+-------------
+> docker compose build
+#14 naming to docker.io/library/lab12-app:latest done
+#15 DONE 0.1s
+ Image lab12-app Built
+
+Содержимое образа (проверка .dockerignore)
+------------------------------------------
+> docker run --rm lab12-app sh -c "ls /app"
+alembic
+alembic.ini
+app
+requirements.txt
+
+Тесты, результаты прогонов, локальный .env и файлы базы в образ не попали.
+
+Запуск стека
+------------
+> docker compose up -d
+ Container lab12-db-1 Starting
+ Container lab12-db-1 Started
+ Container lab12-db-1 Waiting
+ Container lab12-db-1 Healthy
+ Container lab12-app-1 Starting
+ Container lab12-app-1 Started
+
+NAME          IMAGE           STATUS                    PORTS
+lab12-app-1   lab12-app       Up 12 seconds             0.0.0.0:8000->8000/tcp
+lab12-db-1    postgres:16     Up 18 seconds (healthy)   5432/tcp
+
+Логи приложения: миграции применяются до старта сервера
+------------------------------------------------------
+app-1  | INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+app-1  | INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial_schema
+app-1  | INFO:     Application startup complete.
+app-1  | INFO:     Uvicorn running on http://0.0.0.0:8000
+
+Проверка работоспособности в контейнере
+---------------------------------------
+> curl http://127.0.0.1:8000/health
+{"status":"ok","app_name":"Система управления библиотекой","version":"1.0.0","today":"2026-10-06"}
+
+> curl -X POST http://127.0.0.1:8000/items -H "Content-Type: application/json" \
+       -d '{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.",
+            "year":1967,"genre":"Художественная литература","total_copies":3}'
+{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,
+ "genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3}
+HTTP 201
+
+> curl "http://127.0.0.1:8000/items?search=булгаков"
+[{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.", ...}]
+
+Поиск по кириллице в другом регистре работает и на PostgreSQL: в этой базе
+встроенная lower() корректно работает с Unicode, поэтому замена функции
+из задания 1 здесь не нужна.
+
+Переменные окружения в контейнере
+---------------------------------
+> docker compose exec app sh -c 'echo "DATABASE_URL=$DATABASE_URL"; echo "LOAN_DAYS=$LOAN_DAYS"'
+DATABASE_URL=postgresql+psycopg2://library:library@db:5432/library
+LOAN_DAYS=14
+FINE_PER_DAY=1.50
+
+Состояние миграций
+------------------
+> docker compose exec app alembic current
+0001_initial_schema (head)
+
+Проверка миграций локально на SQLite
+------------------------------------
+> alembic upgrade head
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial_schema
+
+> alembic downgrade base
+INFO  [alembic.runtime.migration] Running downgrade 0001_initial_schema ->
+
+> alembic upgrade head
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial_schema
+
+Схема после миграции:
+  таблицы: ['alembic_version', 'books', 'loans', 'readers']
+  индексы: ['ix_books_author', 'ix_books_title', 'ix_loans_book_id_reader_id',
+            'ix_loans_issued_at', 'ix_readers_full_name']
+
+Ограничения таблицы books:
+  CONSTRAINT uq_books_isbn UNIQUE (isbn)
+  CONSTRAINT ck_books_total_copies_non_negative CHECK (total_copies >= 0)
+  CONSTRAINT ck_books_available_within_total
+      CHECK (available_copies >= 0 AND available_copies <= total_copies)
+
+Остановка стека
+---------------
+> docker compose down
+ Container lab12-db-1 Stopped
+ Container lab12-db-1 Removed
+ Network lab12_default Removed
+
+Как устроена конфигурация
+------------------------
+- Dockerfile копирует requirements.txt отдельным слоем и ставит зависимости
+  до копирования кода: при изменении кода пересобирается только последний слой.
+- PYTHONDONTWRITEBYTECODE и PYTHONUNBUFFERED убирают лишние файлы и делают
+  логи видимыми сразу.
+- Команда запуска: alembic upgrade head, затем uvicorn. Миграции
+  применяются до приёма запросов, поэтому база всегда готова.
+- docker-compose.yml поднимает app и db. Сервис app ждёт готовности
+  PostgreSQL через condition: service_healthy и healthcheck pg_isready.
+- Данные PostgreSQL хранятся в именованном томе pgdata и переживают
+  пересоздание контейнеров.
+- Строка подключения и бизнес-правила задаются переменными окружения,
+  поэтому один и тот же образ работает с SQLite локально и с PostgreSQL
+  в контейнере без пересборки.
+- .dockerignore исключает из образа тесты, результаты прогонов, локальный
+  .env и файлы базы.
