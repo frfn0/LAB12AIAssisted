@@ -101,7 +101,7 @@ def update_item(item_id: int, payload: ItemUpdate, db: DbSession) -> Book:
         issued = book.total_copies - book.available_copies
         if new_total < issued:
             raise ConflictError(
-                f"Нельзя установить total_copies={new_total}: {issued} экземпляров сейчас выданы"
+                f"Нельзя установить total_copies={new_total}: в выдаче {issued} шт."
             )
         changes["available_copies"] = new_total - issued
 
@@ -122,7 +122,7 @@ def delete_item(item_id: int, db: DbSession) -> None:
 
     issued_copies = book.total_copies - book.available_copies
     if issued_copies > 0:
-        raise ConflictError(f"Книгу нельзя удалить: выдано {issued_copies} экземпляров")
+        raise ConflictError(f"Книгу нельзя удалить: в выдаче {issued_copies} шт.")
 
     db.delete(book)
     db.commit()

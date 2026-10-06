@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.config import get_settings
 
@@ -22,10 +23,19 @@ def _engine_kwargs(url: str) -> dict[str, object]:
     SQLite проверяет, что соединение используется из того же потока, в котором
     было открыто. FastAPI обрабатывает запросы в пуле потоков, поэтому для
     SQLite это ограничение нужно снять.
+
+    Для базы в памяти дополнительно нужен StaticPool: по умолчанию SQLite
+    создаёт новую пустую базу на каждое соединение, и данные из одной сессии
+    были бы не видны другой. Такой режим используется в тестах.
     """
-    if url.startswith("sqlite"):
-        return {"connect_args": {"check_same_thread": False}}
-    return {}
+    if not url.startswith("sqlite"):
+        return {}
+
+    kwargs: dict[str, object] = {"connect_args": {"check_same_thread": False}}
+    if url in {"sqlite", "sqlite+pysqlite://", "sqlite://", "sqlite:///:memory:"}:
+        kwargs["poolclass"] = StaticPool
+
+    return kwargs
 
 
 def create_db_engine() -> Engine:
