@@ -1,0 +1,101 @@
+Задание 1. Генерация CRUD-приложения: фактический вывод
+====================================================
+
+Дата проверки: 2026-10-06
+Запуск: python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+Демонстрация: python scripts/demo_task1.py
+Полный лог: results/task1_output.txt
+
+Модель данных (6 полей, требовалось не менее 5)
+----------------------------------------------
+isbn, title, author, year, genre, total_copies
+плюс вычисляемое поле available_copies и идентификатор id.
+
+Эндпоинты основной сущности (Item = книга)
+-------------------------------------------
+GET    /items            список с поиском и пагинацией
+POST   /items            создание
+GET    /items/{item_id}  чтение
+PUT    /items/{item_id}  частичное обновление
+DELETE /items/{item_id}  удаление
+
+Дополнительно: GET /health и GET /items/stats/summary.
+
+Фактический вывод (выдержка)
+----------------------------
+GET /health - проверка состояния
+    HTTP 200
+    {"status":"ok","app_name":"Система управления библиотекой","version":"1.0.0","today":"2026-10-06"}
+
+1. POST /items - создание книги
+    HTTP 201
+    {"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,"genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3}
+
+3. POST /items - дубликат ISBN -> 409
+    HTTP 409
+    {"detail":"Книга с ISBN 978-5-17-115205-6 уже существует","error_type":"ConflictError"}
+
+6. GET /items/999 - несуществующий id -> 404
+    HTTP 404
+    {"detail":"Книга с id=999 не найдена","error_type":"NotFoundError"}
+
+7. PUT /items/1 - частичное обновление (PUT)
+    HTTP 200
+    {"genre":"Классика","total_copies":5, ... "available_copies":5}
+
+8. POST /items - невалидные данные -> 422
+    HTTP 422
+    isbn  -> string_too_short (минимум 10 символов)
+    title -> string_too_short
+    year  -> greater_than_equal (минимум 1450)
+    total_copies -> greater_than_equal (минимум 0)
+
+9. GET /items?search=булгаков - поиск по автору в другом регистре
+    HTTP 200
+    [{"author":"Булгаков М.А.", ...}]
+
+12. DELETE /items/2 - удаление книги -> 204
+13. DELETE /items/2 - удаление ещё раз -> 404
+14. GET /items/stats/summary
+    HTTP 200
+    {"titles":1,"total_copies":5,"available_copies":5,"issued_copies":0}
+
+15. GET /items?limit=9999 - выход за пределы пагинации -> 422
+    HTTP 422
+    limit -> less_than_equal (максимум 200)
+
+16. Состав API по спецификации OpenAPI
+    GET                  /health
+    GET, POST            /items
+    GET                  /items/stats/summary
+    DELETE, GET, PUT     /items/{item_id}
+
+Валидация и обработка ошибок
+----------------------------
+- схемы Pydantic v2 с аннотациями типов и ограничениями (ge, le, min_length,
+  max_length), примеры значений для Swagger;
+- доменные исключения NotFoundError (404), ConflictError (409),
+  BusinessRuleError (409) заменяют исключения SQLAlchemy в едином формате
+  {"detail": ..., "error_type": ...};
+- нарушение уникальности ISBN дополнительно перехватывается обработчиком
+  IntegrityError, поэтому конкурентные вставки тоже дают 409, а не 500;
+- ограничения на уровне таблицы: total_copies >= 0 и
+  0 <= available_copies <= total_copies;
+- проверка бизнес-правила: нельзя уменьшить total_copies ниже числа
+  выданных экземпляров; нельзя удалить книгу, у которой есть выдачи.
+
+Найденная и исправленная ошибка
+-------------------------------
+Первая версия поиска использовала ilike() и работала неправильно:
+запрос «булгаков» не находил книгу с автором «Булгаков М.А.».
+Причина - встроенная функция lower() в SQLite меняет регистр только для
+символов ASCII. Проверка на уровне SQL:
+
+    SELECT 'Булгаков' LIKE 'булгаков'   ->  0
+    SELECT 'Abc'      LIKE 'abc'         ->  1
+
+Исправление: в app/database.py на соединение SQLite регистрируется функция
+lower() на Python, корректно работающая с Unicode. Конструкция ilike()
+подхватывает её автоматически, а в PostgreSQL, где lower() уже умеет
+работать с Unicode, вмешательство не требуется. После исправления поиск
+работает в любом регистре - это видно в пунктах 9 и 10 лога.
