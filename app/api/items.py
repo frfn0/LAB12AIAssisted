@@ -12,10 +12,33 @@ from app.database import get_db
 from app.errors import ConflictError, NotFoundError
 from app.models import Book
 from app.schemas import ItemCreate, ItemRead, ItemUpdate
+from app.security import require_api_key
 
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+# Изменяющие эндпоинты закрыты ключом доступа. Чтение остаётся открытым,
+# иначе каталог фонда нельзя было бы посмотреть.
+WritesProtected = [Depends(require_api_key)]
+
+LIKE_ESCAPE = "\\"
+# Порядок важен: сам символ экранирования обрабатывается первым, иначе
+# обратные слэши, добавленные при экранировании % и _, были бы удвоены
+# ещё раз и сломали бы шаблон.
+LIKE_SPECIALS = (LIKE_ESCAPE, "%", "_")
+
+
+def _escape_like(value: str) -> str:
+    """Экранирует спецсимволы шаблона LIKE.
+
+    Без этого запрос search=% вернул бы весь каталог: символ % в LIKE означает
+    «любая последовательность». Здесь он трактуется как обычный символ.
+    """
+    cleaned = value.strip()
+    for special in LIKE_SPECIALS:
+        cleaned = cleaned.replace(special, LIKE_ESCAPE + special)
+    return cleaned
 
 
 def _find_by_isbn(db: Session, isbn: str) -> Book | None:
@@ -43,10 +66,13 @@ def list_items(
     """Возвращает страницу книг с необязательным поиском по названию и автору."""
     statement: Select[tuple[Book]] = select(Book)
 
-    if search:
-        pattern = f"%{search.strip()}%"
+    if search and search.strip():
+        pattern = f"%{_escape_like(search)}%"
         statement = statement.where(
-            or_(Book.title.ilike(pattern), Book.author.ilike(pattern))
+            or_(
+                Book.title.ilike(pattern, escape=LIKE_ESCAPE),
+                Book.author.ilike(pattern, escape=LIKE_ESCAPE),
+            )
         )
 
     statement = statement.order_by(Book.id).offset(skip).limit(limit)
@@ -64,6 +90,7 @@ def get_item(item_id: int, db: DbSession) -> Book:
     response_model=ItemRead,
     status_code=status.HTTP_201_CREATED,
     summary="Создать книгу",
+    dependencies=WritesProtected,
 )
 def create_item(payload: ItemCreate, db: DbSession) -> Book:
     """Создаёт новую книгу. ISBN должен быть уникальным."""
@@ -87,7 +114,12 @@ def create_item(payload: ItemCreate, db: DbSession) -> Book:
     return book
 
 
-@router.put("/{item_id}", response_model=ItemRead, summary="Обновить книгу")
+@router.put(
+    "/{item_id}",
+    response_model=ItemRead,
+    summary="Обновить книгу",
+    dependencies=WritesProtected,
+)
 def update_item(item_id: int, payload: ItemUpdate, db: DbSession) -> Book:
     """Частично обновляет книгу: изменяются только переданные поля."""
     book = _get_or_404(db, item_id)
@@ -114,7 +146,10 @@ def update_item(item_id: int, payload: ItemUpdate, db: DbSession) -> Book:
 
 
 @router.delete(
-    "/{item_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить книгу"
+    "/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить книгу",
+    dependencies=WritesProtected,
 )
 def delete_item(item_id: int, db: DbSession) -> None:
     """Удаляет книгу, если ни один её экземпляр не выдан читателю."""

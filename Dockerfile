@@ -25,5 +25,7 @@ COPY .env.example ./.env
 # недоступен снаружи.
 EXPOSE 8000
 
-# Миграции применяются до запуска сервера, чтобы база была готова.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# --no-server-header убирает заголовок Server: uvicorn. На уровне
+# приложения его удалить нельзя, uvicorn добавляет его после возврата
+# ответа. Миграции применяются до запуска сервера, чтобы база была готова.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-server-header"]

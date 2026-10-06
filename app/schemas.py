@@ -15,6 +15,10 @@ class ItemBase(BaseModel):
     `Item` - основная сущность предметной области: книга в фонде библиотеки.
     """
 
+    # Запрещаем поля, которых нет в модели: без этого лишние поля молча
+    # игнорировались бы, и клиент не получил бы ответа о неверном запросе.
+    model_config = ConfigDict(extra="forbid")
+
     isbn: str = Field(
         min_length=10,
         max_length=17,
@@ -79,6 +83,8 @@ class ItemRead(ItemBase):
 
 class ReaderBase(BaseModel):
     """Общие поля читателя."""
+
+    model_config = ConfigDict(extra="forbid")
 
     full_name: str = Field(min_length=2, max_length=255, examples=["Иванов Иван"])
     email: EmailStr = Field(examples=["ivanov@example.com"])

@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     loan_days: int = 14
     fine_per_day: float = 1.50
 
+    # Ключ доступа к изменяющим эндпоинтам. Пустое значение означает,
+    # что проверка выключена - это режим разработки. В контейнере
+    # ключ задаётся переменной окружения.
+    api_key: str = ""
+
+    @property
+    def api_key_required(self) -> bool:
+        """Включена ли проверка ключа доступа."""
+        return bool(self.api_key)
+
 
 @lru_cache
 def get_settings() -> Settings:
