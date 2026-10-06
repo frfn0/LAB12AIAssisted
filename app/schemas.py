@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    ValidationInfo,
+    field_validator,
+)
 
+from app.isbn import IsbnError, normalize, validate_isbn
 from app.models import Book, Reader
 
 
@@ -22,8 +30,8 @@ class ItemBase(BaseModel):
     isbn: str = Field(
         min_length=10,
         max_length=17,
-        description="ISBN-10 или ISBN-13",
-        examples=["978-5-17-115205-6"],
+        description="ISBN-10 или ISBN-13, дефисы допускаются",
+        examples=["978-5-17-115205-5"],
     )
     title: str = Field(min_length=1, max_length=255, examples=["Мастер и Маргарита"])
     author: str = Field(min_length=1, max_length=255, examples=["Булгаков М.А."])
@@ -41,6 +49,20 @@ class ItemBase(BaseModel):
         if not cleaned:
             raise ValueError("значение не должно состоять только из пробелов")
         return cleaned
+
+    @field_validator("isbn")
+    @classmethod
+    def _check_isbn(cls, value: str, info: ValidationInfo) -> str:
+        """Проверяет формат и контрольную сумму ISBN, возвращает нормализованный вид.
+
+        Минимальная проверка длины остаётся в Field, а здесь проверяется
+        настоящая корректность: иначе в базу попадали бы ISBN с опечаткой
+        в цифре, которая проходит по длине.
+        """
+        try:
+            return validate_isbn(value)
+        except IsbnError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class ItemCreate(ItemBase):
@@ -127,6 +149,11 @@ class HealthResponse(BaseModel):
     app_name: str
     version: str
     today: date
+
+
+def normalize_isbn(isbn: str) -> str:
+    """Убирает дефисы и пробелы из ISBN."""
+    return normalize(isbn)
 
 
 def book_to_read_schema(book: Book) -> ItemRead:
