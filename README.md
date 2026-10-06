@@ -43,6 +43,13 @@
 │   └── api/
 │       └── items.py          CRUD основной сущности (книга)
 ├── alembic/                  миграции базы данных
+│   ├── env.py                строка подключения из настроек приложения
+│   ├── script.py.mako
+│   └── versions/
+│       └── 0001_initial_schema.py
+├── Dockerfile                образ приложения
+├── docker-compose.yml        app + PostgreSQL
+├── .dockerignore             тесты и результаты не попадают в образ
 ├── scripts/
 │   ├── demo_task1.py         демонстрация CRUD
 │   └── demo_task3.py         сравнение версий расчёта штрафа
@@ -312,3 +319,141 @@ python -m pytest tests/test_fines.py -v
 Фактический вывод: [results/task3_result.txt](results/task3_result.txt),
 лог демонстрации: [results/task3_output.txt](results/task3_output.txt),
 лог тестов: [results/task3_tests.txt](results/task3_tests.txt)
+
+---
+
+## Задание 4. Генерация Docker-конфигурации
+
+`Dockerfile`, `docker-compose.yml`, `.dockerignore` и миграции Alembic.
+
+### Запуск в Docker
+
+```bash
+docker compose up -d
+```
+
+```
+ Container lab12-db-1 Starting
+ Container lab12-db-1 Started
+ Container lab12-db-1 Waiting
+ Container lab12-db-1 Healthy
+ Container lab12-app-1 Starting
+ Container lab12-app-1 Started
+
+NAME          IMAGE           STATUS                    PORTS
+lab12-app-1   lab12-app       Up 12 seconds             0.0.0.0:8000->8000/tcp
+lab12-db-1    postgres:16     Up 18 seconds (healthy)   5432/tcp
+```
+
+Приложение: <http://127.0.0.1:8000/docs>
+
+### Проверка
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+```json
+{"status":"ok","app_name":"Система управления библиотекой","version":"1.0.0","today":"2026-10-06"}
+```
+
+```bash
+curl -X POST http://127.0.0.1:8000/items \
+     -H "Content-Type: application/json" \
+     -d '{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.",
+          "year":1967,"genre":"Художественная литература","total_copies":3}'
+```
+
+```json
+{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,
+ "genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3}
+HTTP 201
+```
+
+```bash
+# поиск по кириллице в другом регистре
+curl "http://127.0.0.1:8000/items?search=булгаков"
+```
+
+```json
+[{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.", ...}]
+```
+
+### Переменные окружения
+
+```bash
+docker compose exec app sh -c 'echo "DATABASE_URL=$DATABASE_URL"; echo "LOAN_DAYS=$LOAN_DAYS"'
+```
+
+```
+DATABASE_URL=postgresql+psycopg2://library:library@db:5432/library
+LOAN_DAYS=14
+FINE_PER_DAY=1.50
+```
+
+| Переменная | Назначение | По умолчанию |
+|------------|------------|--------------|
+| `DATABASE_URL` | строка подключения к базе | `sqlite+pysqlite:///./library.db` |
+| `SQL_ECHO` | печатать SQL-запросы в лог | `false` |
+| `LOAN_DAYS` | срок выдачи в днях | `14` |
+| `FINE_PER_DAY` | штраф за день просрочки | `1.50` |
+
+Один и тот же образ работает с SQLite локально и с PostgreSQL в контейнере
+без пересборки: достаточно задать `DATABASE_URL`.
+
+### Миграции
+
+```bash
+# применить миграции
+alembic upgrade head
+
+# откатить последнюю миграцию
+alembic downgrade -1
+
+# текущая версия схемы
+alembic current
+```
+
+```
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial_schema
+0001_initial_schema (head)
+```
+
+Миграция создаёт три таблицы с ограничениями и индексами:
+
+```
+таблицы: ['alembic_version', 'books', 'loans', 'readers']
+Индексы: ['ix_books_author', 'ix_books_title', 'ix_loans_book_id_reader_id',
+          'ix_loans_issued_at', 'ix_readers_full_name']
+
+CONSTRAINT uq_books_isbn UNIQUE (isbn)
+CONSTRAINT ck_books_total_copies_non_negative CHECK (total_copies >= 0)
+CONSTRAINT ck_books_available_within_total
+    CHECK (available_copies >= 0 AND available_copies <= total_copies)
+```
+
+В `Dockerfile` миграции применяются до запуска сервера, поэтому база всегда
+готова к приёму запросов.
+
+### Как устроена конфигурация
+
+- `Dockerfile` копирует `requirements.txt` отдельным слоем и ставит
+  зависимости до копирования кода: при изменении кода пересобирается только
+  последний слой;
+- `PYTHONDONTWRITEBYTECODE` и `PYTHONUNBUFFERED` убирают лишние файлы и
+  делают логи видимыми сразу;
+- `docker-compose.yml` поднимает `app` и `db`. Сервис `app` ждёт готовности
+  PostgreSQL через `condition: service_healthy` и healthcheck `pg_isready`;
+- данные PostgreSQL хранятся в именованном томе `pgdata` и переживают
+  пересоздание контейнеров;
+- `.dockerignore` исключает из образа тесты, результаты прогонов, локальный
+  `.env` и файлы базы — в образе только `app`, `alembic`, `alembic.ini` и
+  `requirements.txt`.
+
+### Остановка
+
+```bash
+docker compose down
+```
+
+Фактический вывод: [results/task4_result.txt](results/task4_result.txt)
