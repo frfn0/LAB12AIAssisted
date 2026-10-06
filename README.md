@@ -538,3 +538,160 @@ docker compose down
 - вынос ставок в базу — преждевременная оптимизация для текущего объёма правил.
 
 Фактический вывод: [results/task5_result.txt](results/task5_result.txt)
+
+---
+
+## Описание API
+
+Все примеры ниже — реальные ответы работающего приложения.
+
+### Создание книги
+
+```bash
+curl -X POST http://127.0.0.1:8000/items \
+     -H "Content-Type: application/json" \
+     -d '{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.",
+          "year":1967,"genre":"Художественная литература","total_copies":3}'
+```
+
+```json
+{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,
+ "genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3}
+```
+
+`HTTP 201 Created`
+
+### Список книг
+
+```bash
+curl http://127.0.0.1:8000/items
+```
+
+```json
+[{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,
+  "genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3},
+ {"isbn":"978-0-13-235088-4","title":"Clean Code","author":"Роберт Мартин","year":2008,
+  "genre":"Программирование","total_copies":1,"id":2,"available_copies":1}]
+```
+
+`HTTP 200 OK`
+
+Параметры запроса: `search` (поиск по названию или автору, без учёта регистра), `skip` (по умолчанию 0), `limit` (по умолчанию 50, максимум 200).
+
+```bash
+curl "http://127.0.0.1:8000/items?search=булгаков"
+```
+
+```json
+[{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,
+  "genre":"Классика","total_copies":5,"id":1,"available_copies":5}]
+```
+
+### Чтение книги
+
+```bash
+curl http://127.0.0.1:8000/items/1
+```
+
+```json
+{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,
+ "genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3}
+```
+
+`HTTP 200 OK`
+
+Отсутствующий идентификатор:
+
+```bash
+curl http://127.0.0.1:8000/items/999
+```
+
+```json
+{"detail":"Книга с id=999 не найдена","error_type":"NotFoundError"}
+```
+
+`HTTP 404 Not Found`
+
+### Обновление книги
+
+```bash
+curl -X PUT http://127.0.0.1:8000/items/1 \
+     -H "Content-Type: application/json" \
+     -d '{"genre":"Классика","total_copies":5}'
+```
+
+```json
+{"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,
+ "genre":"Классика","total_copies":5,"id":1,"available_copies":5}
+```
+
+`HTTP 200 OK`
+
+Изменяются только переданные поля. Нельзя уменьшить `total_copies` ниже числа выданных экземпляров — вернётся `409 Conflict`.
+
+### Удаление книги
+
+```bash
+curl -X DELETE http://127.0.0.1:8000/items/2
+```
+
+`HTTP 204 No Content` (тело ответа пустое)
+
+Книгу с выданными экземплярами удалить нельзя — вернётся `409 Conflict`.
+
+### Сводка по фонду
+
+```bash
+curl http://127.0.0.1:8000/items/stats/summary
+```
+
+```json
+{"titles":1,"total_copies":5,"available_copies":5,"issued_copies":0}
+```
+
+`HTTP 200 OK`
+
+### Проверка состояния
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+```json
+{"status":"ok","app_name":"Система управления библиотекой","version":"1.0.0","today":"2026-10-06"}
+```
+
+`HTTP 200 OK`
+
+### Ошибки валидации
+
+```bash
+curl -X POST http://127.0.0.1:8000/items \
+     -H "Content-Type: application/json" \
+     -d '{"isbn":"123","title":"","year":999,"total_copies":-4}'
+```
+
+```json
+{"detail":[{"type":"string_too_short","loc":["body","isbn"],"msg":"String should have at least 10 characters"},
+           {"type":"string_too_short","loc":["body","title"],"msg":"String should have at least 1 character"},
+           {"type":"missing","loc":["body","author"],"msg":"Field required"},
+           {"type":"greater_than_equal","loc":["body","year"],"msg":"Input should be greater than or equal to 1450"},
+           {"type":"missing","loc":["body","genre"],"msg":"Field required"},
+           {"type":"greater_than_equal","loc":["body","total_copies"],"msg":"Input should be greater than or equal to 0"}]}
+```
+
+`HTTP 422 Unprocessable Entity`
+
+### Формат ошибок
+
+Все ошибки возвращаются в едином формате:
+
+```json
+{"detail":"текст ошибки","error_type":"тип ошибки"}
+```
+
+| Код | Тип | Когда |
+|-----|-----|-------|
+| 404 | `NotFoundError` | Книга с таким id не найдена |
+| 409 | `ConflictError` | Дубликат ISBN, нельзя уменьшить `total_copies`, нельзя удалить книгу с выдачами |
+| 422 | валидация Pydantic | Невалидные данные в запросе |
