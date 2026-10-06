@@ -126,7 +126,40 @@ ISBN (409), несуществующий id (404), невалидные данн
 
 ## Задание 4. Генерация Docker-конфигурации
 
-_будет дополнено_
+### Промпт
+
+> докер запущен, начинай
+
+### Результат
+
+Созданы `Dockerfile`, `docker-compose.yml`, `.dockerignore` и миграции
+Alembic (`alembic.ini`, `alembic/env.py`, `alembic/versions/0001_initial_schema.py`).
+
+Стек поднят и проверен: `docker compose up -d` — оба контейнера работают,
+PostgreSQL healthy, миграция применяется до старта сервера, CRUD и поиск
+по кириллице работают. Образ 321 MB, в нём только `app`, `alembic`,
+`alembic.ini` и `requirements.txt`.
+
+### Неудачные попытки и исправления
+
+| Что пошло не так | Почему | Как исправлено |
+|------------------|--------|----------------|
+| Первая проверка схемы через `python -c` с вложенными кавычками упала с SyntaxError | PowerShell 5.1 ломает вложенные кавычки в `-c` | Проверка вынесена во временный скрипт `check_schema.py` |
+| В `docker-compose.yml` сначала не было healthcheck | Приложение могло стартовать раньше PostgreSQL | Добавлен healthcheck `pg_isready` и `condition: service_healthy` |
+| В `Dockerfile` сначала копировался весь каталог целиком | Тесты и результаты попадали бы в образ | Добавлен `.dockerignore`, копирование по файлам |
+
+### Проверка
+
+- `docker compose build` — образ собран
+- `docker compose up -d` — оба контейнера запущены, db healthy
+- `curl /health` — 200 OK
+- `POST /items` — 201, книга создана
+- `GET /items?search=булгаков` — 200, книга найдена
+- `alembic current` — `0001_initial_schema (head)`
+- `alembic downgrade base` + `alembic upgrade head` — обе операции работают
+- `docker compose down` — стек остановлен
+
+Результат: [results/task4_result.txt](results/task4_result.txt)
 
 ---
 
