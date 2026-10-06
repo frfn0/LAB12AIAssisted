@@ -29,11 +29,11 @@ GET /health - проверка состояния
 
 1. POST /items - создание книги
     HTTP 201
-    {"isbn":"978-5-17-115205-6","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,"genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3}
+    {"isbn":"978-5-17-115205-5","title":"Мастер и Маргарита","author":"Булгаков М.А.","year":1967,"genre":"Художественная литература","total_copies":3,"id":1,"available_copies":3}
 
 3. POST /items - дубликат ISBN -> 409
     HTTP 409
-    {"detail":"Книга с ISBN 978-5-17-115205-6 уже существует","error_type":"ConflictError"}
+    {"detail":"Книга с ISBN 978-5-17-115205-5 уже существует","error_type":"ConflictError"}
 
 6. GET /items/999 - несуществующий id -> 404
     HTTP 404
