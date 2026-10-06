@@ -18,7 +18,7 @@ import httpx
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000")
 
 BOOK_MASTER = {
-    "isbn": "978-5-17-115205-6",
+    "isbn": "978-5-17-115205-5",
     "title": "Мастер и Маргарита",
     "author": "Булгаков М.А.",
     "year": 1967,

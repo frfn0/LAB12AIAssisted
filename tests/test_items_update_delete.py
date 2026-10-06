@@ -88,7 +88,7 @@ def test_неизвестное_поле_при_обновлении_даёт_42
     """ItemUpdate запрещает поля, которых нет в модели."""
     response = client.put(
         f"/items/{created_book['id']}",
-        json={"isbn": "978-5-17-115205-7"},
+        json={"isbn": "978-5-17-115205-5"},
     )
 
     assert response.status_code == ERROR_422

@@ -21,7 +21,7 @@ from app.database import Base, engine  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 BOOK = {
-    "isbn": "978-5-17-115205-6",
+    "isbn": "978-5-17-115205-5",
     "title": "Мастер и Маргарита",
     "author": "Булгаков М.А.",
     "year": 1967,

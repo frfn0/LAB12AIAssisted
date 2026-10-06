@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.isbn import make_isbn13
+
 ERROR_422 = 422
 
 
@@ -119,13 +121,12 @@ def test_пагинация_сдвигает_выборку(
 ) -> None:
     """Параметры skip и limit ограничивают выборку."""
     for index in range(3):
+        # Номер формируется с корректной контрольной цифрой: иначе
+        # проверка ISBN из задания 10 отвергла бы эти книги.
+        isbn = make_isbn13(f"978517115{index:03d}")
         client.post(
             "/items",
-            json={
-                **book_payload,
-                "isbn": f"978-5-17-115205-{index}",
-                "title": f"Книга {index}",
-            },
+            json={**book_payload, "isbn": isbn, "title": f"Книга {index}"},
         )
 
     response = client.get("/items", params={"skip": 1, "limit": 1})

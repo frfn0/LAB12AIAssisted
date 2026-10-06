@@ -179,7 +179,7 @@ def seed(session: Session) -> None:
     """Наполняет базу правдоподобными данными."""
     books = [
         Book(
-            isbn="978-5-17-115205-6",
+            isbn="978-5-17-115205-5",
             title="Мастер и Маргарита",
             author="Булгаков М.А.",
             year=1967,
@@ -197,7 +197,7 @@ def seed(session: Session) -> None:
             available_copies=1,
         ),
         Book(
-            isbn="978-5-01-000001-2",
+            isbn="978-5-01-000001-1",
             title="Дюна",
             author="Герберт Ф.",
             year=1965,
@@ -206,7 +206,7 @@ def seed(session: Session) -> None:
             available_copies=6,
         ),
         Book(
-            isbn="978-0-19-283866-6",
+            isbn="978-0-19-283866-7",
             title="English Grammar in Use",
             author="Свободный Т.",
             year=2000,
@@ -215,7 +215,7 @@ def seed(session: Session) -> None:
             available_copies=8,
         ),
         Book(
-            isbn="978-5-17-090717-4",
+            isbn="978-5-17-090717-5",
             title="Анна Каренина",
             author="Толстой Л.Н.",
             year=1877,
