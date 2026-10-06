@@ -1,0 +1,26 @@
+# Сгенерированное и временное
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.egg-info/
+
+# Окружение
+.venv/
+venv/
+.env
+
+# База данных
+*.db
+*.sqlite3
+*.sqlite
+
+# Docker
+.docker/
+
+# Результаты прогонов
+results/*.log
