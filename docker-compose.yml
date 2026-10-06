@@ -17,6 +17,10 @@ services:
 
   db:
     image: postgres:16-alpine
+    # Порт проброшен наружу, чтобы к базе можно было подключиться извне:
+    # psql, DBeaver или скрипты проверки аналитических запросов.
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: library
       POSTGRES_PASSWORD: library
