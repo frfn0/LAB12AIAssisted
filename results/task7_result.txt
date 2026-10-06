@@ -1,0 +1,76 @@
+Задание 7. Генерация миграций БД: фактический вывод
+==================================================
+
+Дата проверки: 2026-10-07
+Запуск: alembic upgrade head
+База: SQLite (проверка), PostgreSQL (в Docker)
+
+Миграции
+-------
+0001_initial_schema          создание схемы: books, readers, loans
+0002_add_loan_notes          добавление notes к loans и индекса на returned_at
+
+История миграций
+----------------
+> alembic history
+0001_initial_schema -> 0002_add_loan_notes (head), Добавление заметок к выдачам и индекса для поиска просрочек
+<base> -> 0001_initial_schema, Начальная схема: книги, читатели, выдачи
+
+Применение миграций
+-------------------
+> alembic upgrade head
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial_schema, Начальная схема: книги, читатели, выдачи
+INFO  [alembic.runtime.migration] Running upgrade 0001_initial_schema -> 0002_add_loan_notes, Добавление заметок к выдачам и индекса для поиска просрочек
+
+> alembic current
+0002_add_loan_notes (head)
+
+Связи между таблицами
+---------------------
+Таблица loans связана с books и readers через внешние ключи:
+
+  loans.book_id    -> books.id    (ON DELETE CASCADE)
+  loans.reader_id  -> readers.id  (ON DELETE CASCADE)
+
+Связь один-ко-многим: одна книга может быть выдана много раз, один читатель
+может иметь много выдач. При удалении книги или читателя все связанные
+выдачи удаляются автоматически (CASCADE).
+
+Индексы для часто запрашиваемых полей
+--------------------------------------
+ix_books_title                  books.title        — поиск по названию
+ix_books_author                 books.author       — поиск по автору
+ix_readers_full_name            readers.full_name  — поиск читателя по имени
+ix_loans_issued_at              loans.issued_at    — выдачи за период
+ix_loans_returned_at            loans.returned_at  — поиск просроченных выдач
+ix_loans_book_id_reader_id      loans(book_id, reader_id) — проверка, выдана ли книга читателю
+
+Уникальные ограничения
+----------------------
+uq_books_isbn                   books.isbn         — ISBN уникален
+uq_readers_email                readers.email      — email уникален
+
+Ограничения целостности
+-----------------------
+ck_books_total_copies_non_negative
+    CHECK (total_copies >= 0)
+ck_books_available_within_total
+    CHECK (available_copies >= 0 AND available_copies <= total_copies)
+
+Итоговая схема после обеих миграций
+-----------------------------------
+таблицы: ['alembic_version', 'books', 'loans', 'readers']
+индексы: ['ix_books_author', 'ix_books_title', 'ix_loans_book_id_reader_id',
+          'ix_loans_issued_at', 'ix_loans_returned_at', 'ix_readers_full_name']
+
+Колонки таблицы loans:
+  id, book_id, reader_id, issued_at, due_at, returned_at, fine, notes
+
+Что делает вторая миграция
+--------------------------
+1. Добавляет колонку notes (TEXT) в таблицу loans — библиотекарь может
+   оставить комментарий к выдаче (например, «книга возвращена с повреждением»).
+2. Добавляет индекс ix_loans_returned_at — ускоряет поиск просроченных
+   выдач (WHERE returned_at IS NULL) и отчёты по датам возврата.
+
+Обе операции обратимы: downgrade удаляет индекс и колонку.
