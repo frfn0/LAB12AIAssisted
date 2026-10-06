@@ -403,6 +403,13 @@ FINE_PER_DAY=1.50
 
 ### Миграции
 
+Проект содержит две миграции Alembic:
+
+| Миграция | Что делает |
+|----------|------------|
+| `0001_initial_schema` | Создаёт таблицы `books`, `readers`, `loans` со связями, индексами и ограничениями |
+| `0002_add_loan_notes` | Добавляет колонку `notes` в `loans` и индекс `ix_loans_returned_at` |
+
 ```bash
 # применить миграции
 alembic upgrade head
@@ -416,19 +423,40 @@ alembic current
 
 ```
 INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial_schema
-0001_initial_schema (head)
+INFO  [alembic.runtime.migration] Running upgrade 0001_initial_schema -> 0002_add_loan_notes
+0002_add_loan_notes (head)
 ```
 
-Миграция создаёт три таблицы с ограничениями и индексами:
+#### Связи между таблицами
 
 ```
-таблицы: ['alembic_version', 'books', 'loans', 'readers']
-Индексы: ['ix_books_author', 'ix_books_title', 'ix_loans_book_id_reader_id',
-          'ix_loans_issued_at', 'ix_readers_full_name']
+loans.book_id    -> books.id    (ON DELETE CASCADE)
+loans.reader_id  -> readers.id  (ON DELETE CASCADE)
+```
 
-CONSTRAINT uq_books_isbn UNIQUE (isbn)
-CONSTRAINT ck_books_total_copies_non_negative CHECK (total_copies >= 0)
-CONSTRAINT ck_books_available_within_total
+Связь один-ко-многим: одна книга может быть выдана много раз, один читатель
+может иметь много выдач. При удалении книги или читателя все связанные
+выдачи удаляются автоматически.
+
+#### Индексы
+
+| Индекс | Таблица | Поле | Зачем |
+|--------|---------|------|-------|
+| `ix_books_title` | books | title | Поиск по названию |
+| `ix_books_author` | books | author | Поиск по автору |
+| `ix_readers_full_name` | readers | full_name | Поиск читателя по имени |
+| `ix_loans_issued_at` | loans | issued_at | Выдачи за период |
+| `ix_loans_returned_at` | loans | returned_at | Поиск просроченных выдач |
+| `ix_loans_book_id_reader_id` | loans | book_id, reader_id | Проверка, выдана ли книга читателю |
+
+#### Ограничения
+
+```
+uq_books_isbn                   UNIQUE (isbn)
+uq_readers_email                UNIQUE (email)
+ck_books_total_copies_non_negative
+    CHECK (total_copies >= 0)
+ck_books_available_within_total
     CHECK (available_copies >= 0 AND available_copies <= total_copies)
 ```
 
